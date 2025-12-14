@@ -48,7 +48,7 @@ count_lines() {
                     line_count=0
                     braces=0
                     exported_funcs=$((exported_funcs + 1))
-                    if [[ $proto =~ "^static" ]]; then
+                    if [[ $proto =~ ^static ]]; then
                         exported_funcs=$((exported_funcs - 1))
                     fi
                 fi
