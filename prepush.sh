@@ -103,8 +103,10 @@ parser() {
         elif [ -f $file ]; then
 
             if [ $MODE -eq 1 ]; then
-                echo $path/$file
-                clang-format -i $file
+                if [ "${file##*.}" = "c" ] || [ "${file##*.}" = "h" ]; then
+                    echo $path/$file
+                    clang-format -i $file
+                fi
 
             elif [ $MODE -eq 2 ] && [ ${file##*.} = c ]; then
                 echo "$path/$file:"
