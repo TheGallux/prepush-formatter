@@ -8,10 +8,14 @@ Gre='\e[0;32m'
 BWht='\e[1;37m'
 NoC='\e[0m'
 
-# CONSTANTS
-THRESHOLD=30
+THRESHOLD=${1:-30}
 
-# REGEX
+if [ ! -d "src" ] && [ $# -ne 2 ]; then
+    echo -e "${BRed}Erreur : Le dossier 'src' est introuvable dans le répertoire actuel.$(pwd)${NoC}"
+    exit 1
+fi
+
+# REGEX & CONSTANTS
 regex='^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_\t\* ]+[[:space:]]+\**([a-zA-Z_][a-zA-Z0-9_]*)[[:space:]]*\((([^\(\),]+|\([^\(\)]*\))(\s*,\s*([^\(\),]+|\([^\(\)]*\))*)*)\)'
 opening_brace="^[[:space:]]*\{"
 closing_brace="^[[:space:]]*\}"
@@ -20,14 +24,18 @@ big_comment_open="^[[:space:]]*/\*"
 big_comment_close="^[[:space:]]*\*/"
 proto_start_regex='^[[:space:]]*[a-zA-Z_][a-zA-Z0-9_[:space:]\*]+\([a-zA-Z_][a-zA-Z0-9_]*'
 
-# FUNCS
 count_lines() {
     braces=0
     skip=0
     proto=""
     exported_funcs=0
+    line_count=0
+    func_name=""
 
     while IFS= read -r line; do
+        if [ $braces -eq 0 ]; then
+            line_count=0
+        fi
 
         if [ $skip -eq 0 ] && [[ $line =~ $big_comment_open ]]; then
             if ! [[ $line =~ \*/$ ]]; then
@@ -73,7 +81,6 @@ count_lines() {
         else
             line_count=$((line_count + 1))
         fi
-
     done < "$1"
 
     if [ $exported_funcs -gt 10 ]; then
@@ -83,55 +90,75 @@ count_lines() {
     fi
 }
 
-#
-
-echo -e "${BWht}make clean:${NoC}"
-make clean
-
-echo ""
-
 parser() {
     local path=$1
-    MODE=$2
+    local MODE=$2
 
-    for file in $(ls -r --group-directories-first); do
-        if [ -d $file ]; then
-            cd $file
-            parser $path/$file $MODE
+    # Utilisation de find pour éviter les bugs avec ls
+    for file in $(find . -maxdepth 1 -not -path '*/.*' | sort -r); do
+        file=$(basename "$file")
+        if [ "$file" = "." ]; then continue; fi
+
+        if [ -d "$file" ]; then
+            cd "$file"
+            parser "$path/$file" "$MODE"
             cd ..
-
-        elif [ -f $file ]; then
-
-            if [ $MODE -eq 1 ]; then
-                if [ "${file##*.}" = "c" ] || [ "${file##*.}" = "h" ]; then
-                    echo $path/$file
-                    clang-format -i $file
+        elif [ -f "$file" ]; then
+            if [ "$MODE" -eq 1 ]; then
+                if [[ "$file" == *.c ]] || [[ "$file" == *.h ]]; then
+                    echo "$path/$file"
+                    clang-format -i "$file"
                 fi
-
-            elif [ $MODE -eq 2 ] && [ ${file##*.} = c ]; then
+            elif [ "$MODE" -eq 2 ] && [[ "$file" == *.c ]]; then
                 echo "$path/$file:"
-                count_lines $file
+                count_lines "$file"
                 echo
             fi
-
         fi
     done
 }
 
-cd src
+if [ $# -ne 2 ]; then
 
-echo -e "${BWht}clang-format:${NoC}"
-parser . 1
+    if [ -f "Makefile" ]; then
+        echo -e "${BWht}make clean:${NoC}"
+        make clean
+        echo ""
+    fi
 
-echo ""
+    cd src
 
-echo -e "${BWht}count-lines:${NoC}"
-parser . 2
+    echo -e "${BWht}Seuil sélectionné : $THRESHOLD lignes${NoC}"
+    echo -e "${BWht}clang-format:${NoC}"
+    parser . 1
 
-n=$(find . -type f -exec wc -l {} + | tail -n1)
-echo "Total code-lines written:$n"
+    echo ""
 
-cd ..
+    echo -e "${BWht}count-lines:${NoC}"
+    parser . 2
 
-n=$(find . -type f -exec wc -l {} + | tail -n1)
-echo "Total lines written:$n"
+    n=$(find . -type f \( -name "*.c" -o -name "*.h" \) -exec wc -l {} + | tail -n1)
+    echo "Total code-lines written: $n"
+
+    cd ..
+
+else
+
+    FILENAME=$2
+
+    if [ -f "Makefile" ]; then
+        echo -e "${BWht}make clean:${NoC}"
+        make clean
+        echo ""
+    fi
+
+    echo -e "${BWht}Seuil sélectionné : $THRESHOLD lignes${NoC}"
+    echo -e "${BWht}clang-format:${NoC}"
+    echo "./$FILENAME"
+
+    echo ""
+
+    echo -e "${BWht}count-lines:${NoC}"
+    count_lines $2
+
+fi
